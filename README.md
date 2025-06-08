@@ -1,52 +1,109 @@
-# 주문-결제 마이크로서비스 시스템
+# Order Payment Microservices
 
-사용자 인증 및 권한 부여가 포함된 견고한 마이크로서비스 기반 주문-결제 시스템입니다.
+주문과 결제를 처리하는 마이크로서비스 기반 시스템입니다.
 
-## 서비스 구조
+## 서비스 구성
 
-### 1. Auth Service
+### 1. Auth Service (8081)
 - 사용자 인증 및 인가
 - 회원 관리 (가입, 수정, 조회)
 - JWT 토큰 관리
 - 사용자 권한 관리
 - 프로필 관리
+- 엔드포인트: `/api/auth/**`, `/api/users/**`
 
-### 2. Order Service
+### 2. Order Service (8082)
 - 주문 생성 및 관리
 - 주문 상태 관리
 - 주문 이력 조회
 - 주문 이벤트 발행
+- 엔드포인트: `/api/orders/**`
 
-### 3. Payment Service
+### 3. Payment Service (8083)
 - 결제 처리
 - 결제 상태 관리
 - 결제 이력 조회
 - 결제 이벤트 발행
+- 엔드포인트: `/api/payments/**`
 
-### 4. Common Library
+### 4. Gateway Service (8000)
+- API 라우팅
+- 로드 밸런싱
+- 서비스 디스커버리 연동
+
+### 5. Eureka Server (8761)
+- 서비스 디스커버리
+- 서비스 등록 및 관리
+- 상태 모니터링
+
+### 6. Common Library
 - 공통 DTO
 - 이벤트 메시지
 - 유틸리티 클래스
 - 공통 예외 처리
 
-## 서비스 간 통신
+## 시스템 구성도
 ```mermaid
 graph TD
-    Client[Client] --> Gateway[API Gateway]
-    Gateway --> Auth[Auth Service]
-    Gateway --> Order[Order Service]
-    Gateway --> Payment[Payment Service]
-    Order --> Kafka[Kafka Event Bus]
+    Client[Client] --> Gateway[Gateway Service :8000]
+    Gateway --> Auth[Auth Service :8081]
+    Gateway --> Order[Order Service :8082]
+    Gateway --> Payment[Payment Service :8083]
+    Order --> Kafka[Kafka :9092]
     Payment --> Kafka
     Order --> Auth
     Payment --> Auth
+    All[All Services] --> Eureka[Eureka Server :8761]
 ```
 
-### 인증 흐름
-1. 클라이언트가 Auth Service를 통해 로그인
-2. JWT 토큰 발급
-3. 토큰을 사용하여 다른 서비스 접근
-4. Auth Service에서 사용자 정보 및 권한 검증
+## 서비스 포트 구성
+
+| 서비스 | 포트 | 엔드포인트 | 설명 |
+|--------|------|------------|------|
+| Gateway Service | 8000 | / | API Gateway |
+| Eureka Server | 8761 | /eureka | 서비스 디스커버리 |
+| Auth Service | 8081 | /api/auth/**, /api/users/** | 인증 및 사용자 관리 |
+| Order Service | 8082 | /api/orders/** | 주문 관리 |
+| Payment Service | 8083 | /api/payments/** | 결제 처리 |
+| Kafka | 9092 | - | 메시지 브로커 |
+| Zookeeper | 2181 | - | Kafka 클러스터 관리 |
+
+## 기술 스택
+- Java 11
+- Spring Boot 2.7.x
+- Spring Cloud
+- Spring Security
+- Spring Data JPA
+- MySQL
+- Kafka
+- Docker
+- Gradle
+
+## 시작하기
+
+1. 저장소 클론:
+```bash
+git clone https://github.com/yongchulShin/order-payment-ms.git
+cd order-payment-ms
+```
+
+2. 도커 컴포즈로 실행:
+```bash
+docker-compose up -d
+```
+
+3. 서비스 접속:
+- API Gateway: http://localhost:8000
+- Eureka Server: http://localhost:8761
+- Auth Service: http://localhost:8081 (인증 및 사용자 관리)
+- Order Service: http://localhost:8082 (주문 관리)
+- Payment Service: http://localhost:8083 (결제 처리)
+
+## API 문서
+각 서비스의 API 문서는 Swagger UI를 통해 확인할 수 있습니다:
+- Auth Service: http://localhost:8081/swagger-ui.html
+- Order Service: http://localhost:8082/swagger-ui.html
+- Payment Service: http://localhost:8083/swagger-ui.html
 
 ## 기술 스택
 
@@ -129,76 +186,6 @@ sequenceDiagram
    - 주문 금액, 결제 금액, 상품 가격 등 정확한 계산 보장
    - 반올림 오류 방지
 
-## 시작하기
-
-### 사전 요구사항
-- JDK 11
-- Docker 및 Docker Compose
-- MySQL
-- Apache Kafka
-
-### 설치 방법
-
-1. 저장소 클론:
-```bash
-git clone https://github.com/yongchulShin/order-payment-ms.git
-cd order-payment-ms
-```
-
-2. 인프라 서비스 시작:
-```bash
-docker-compose up -d
-```
-
-3. 서비스 빌드 및 실행:
-```bash
-./gradlew build
-```
-
-4. 서비스 접속 주소:
-- Eureka Server: http://localhost:8761
-- API Gateway: http://localhost:8080
-- Auth Service: http://localhost:8081
-- User Service: http://localhost:8082
-- Order Service: http://localhost:8083
-- Payment Service: http://localhost:8084
-
-## API 문서
-
-### 인증 엔드포인트
-- POST /api/auth/signup - 회원가입
-- POST /api/auth/login - 로그인
-- POST /api/auth/refresh - 액세스 토큰 갱신
-- POST /api/auth/logout - 로그아웃
-
-### 사용자 엔드포인트
-- GET /api/users - 사용자 목록 조회
-- GET /api/users/{id} - 사용자 상세 조회
-- PUT /api/users/{id} - 사용자 정보 수정
-- DELETE /api/users/{id} - 사용자 삭제
-
-### 주문 엔드포인트
-- POST /api/orders - 주문 생성
-- GET /api/orders - 주문 목록 조회
-- GET /api/orders/{id} - 주문 상세 조회
-- PUT /api/orders/{id} - 주문 수정
-- DELETE /api/orders/{id} - 주문 취소
-
-### 결제 엔드포인트
-- POST /api/payments - 결제 처리
-- GET /api/payments - 결제 목록 조회
-- GET /api/payments/{id} - 결제 상세 조회
-- GET /api/payments/history - 결제 내역 조회
-
-## 설정
-
-각 서비스는 다음과 같은 설정을 포함하는 application.yml 파일을 가집니다:
-- 데이터베이스 연결
-- Kafka 설정
-- 보안 매개변수
-- 서비스 디스커버리
-- 로깅 레벨
-
 ## 보안 고려사항
 
 - 모든 민감한 데이터 암호화
@@ -222,18 +209,3 @@ docker-compose up -d
 4. 브랜치에 푸시
 5. Pull Request 생성
 
-## 라이선스
-
-이 프로젝트는 MIT 라이선스를 따릅니다 - 자세한 내용은 LICENSE 파일을 참조하세요.
-
-## 서비스 포트 구성
-
-| 서비스 | 포트 | 설명 |
-|--------|------|------|
-| Gateway Service | 8000 | API Gateway |
-| Eureka Server | 8761 | 서비스 디스커버리 |
-| Auth Service | 8081 | 인증 및 사용자 관리 |
-| Order Service | 8082 | 주문 관리 |
-| Payment Service | 8083 | 결제 처리 |
-| Kafka | 9092 | 메시지 브로커 |
-| Zookeeper | 2181 | Kafka 클러스터 관리 |

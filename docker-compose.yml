@@ -10,6 +10,18 @@ services:
     networks:
       - microservices-network
 
+  mysql:
+    image: mysql:8.0
+    ports:
+      - "3306:3306"
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: auth_db
+    volumes:
+      - mysql_data:/var/lib/mysql
+    networks:
+      - microservices-network
+
   zookeeper:
     image: wurstmeister/zookeeper
     ports:
@@ -44,6 +56,24 @@ services:
     networks:
       - microservices-network
 
+  auth-service:
+    build:
+      context: ./auth-service
+      dockerfile: Dockerfile
+    ports:
+      - "8081:8081"
+    environment:
+      - SPRING_PROFILES_ACTIVE=docker
+      - EUREKA_CLIENT_SERVICEURL_DEFAULTZONE=http://eureka-server:8761/eureka
+      - SPRING_DATASOURCE_URL=jdbc:mysql://mysql:3306/auth_db?useSSL=false&serverTimezone=UTC&allowPublicKeyRetrieval=true
+      - SPRING_DATASOURCE_USERNAME=root
+      - SPRING_DATASOURCE_PASSWORD=root
+    depends_on:
+      - eureka-server
+      - mysql
+    networks:
+      - microservices-network
+
   order-service:
     build:
       context: ./order-service
@@ -54,9 +84,13 @@ services:
       - SPRING_PROFILES_ACTIVE=docker
       - EUREKA_CLIENT_SERVICEURL_DEFAULTZONE=http://eureka-server:8761/eureka
       - SPRING_KAFKA_BOOTSTRAP_SERVERS=kafka:9092
+      - SPRING_DATASOURCE_URL=jdbc:mysql://mysql:3306/order_db?useSSL=false&serverTimezone=UTC&allowPublicKeyRetrieval=true
+      - SPRING_DATASOURCE_USERNAME=root
+      - SPRING_DATASOURCE_PASSWORD=root
     depends_on:
       - eureka-server
       - kafka
+      - mysql
     networks:
       - microservices-network
 
@@ -70,12 +104,19 @@ services:
       - SPRING_PROFILES_ACTIVE=docker
       - EUREKA_CLIENT_SERVICEURL_DEFAULTZONE=http://eureka-server:8761/eureka
       - SPRING_KAFKA_BOOTSTRAP_SERVERS=kafka:9092
+      - SPRING_DATASOURCE_URL=jdbc:mysql://mysql:3306/payment_db?useSSL=false&serverTimezone=UTC&allowPublicKeyRetrieval=true
+      - SPRING_DATASOURCE_USERNAME=root
+      - SPRING_DATASOURCE_PASSWORD=root
     depends_on:
       - eureka-server
       - kafka
+      - mysql
     networks:
       - microservices-network
 
 networks:
   microservices-network:
-    driver: bridge 
+    driver: bridge
+
+volumes:
+  mysql_data: 
