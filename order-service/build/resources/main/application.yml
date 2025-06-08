@@ -33,6 +33,9 @@ spring:
       properties:
         spring.json.trusted.packages: "*"
 
+jwt:
+  secret: ${JWT_SECRET:c2VjcmV0LWtleS1mb3ItbWljcm9zZXJ2aWNlcy1wcm9qZWN0LWp3dC10b2tlbi1nZW5lcmF0aW9uLWFuZC12YWxpZGF0aW9u}
+
 eureka:
   client:
     register-with-eureka: true

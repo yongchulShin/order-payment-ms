@@ -8,7 +8,7 @@ import com.example.authservice.model.AuthStatus;
 import com.example.authservice.model.User;
 import com.example.authservice.repository.AuthRepository;
 import com.example.authservice.repository.UserRepository;
-import com.example.authservice.util.JwtTokenProvider;
+import com.example.commonlib.security.JwtTokenProvider;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Scheduled;

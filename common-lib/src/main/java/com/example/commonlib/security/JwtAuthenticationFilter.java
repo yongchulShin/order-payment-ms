@@ -1,6 +1,6 @@
-package com.example.authservice.security;
+package com.example.commonlib.security;
 
-import com.example.authservice.util.JwtTokenProvider;
+import com.example.commonlib.config.JwtProperties;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -21,10 +21,10 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
             throws ServletException, IOException {
-        String jwt = resolveToken(request);
+        String token = resolveToken(request);
 
-        if (StringUtils.hasText(jwt) && tokenProvider.validateToken(jwt)) {
-            Authentication authentication = tokenProvider.getAuthentication(jwt);
+        if (StringUtils.hasText(token) && tokenProvider.validateToken(token)) {
+            Authentication authentication = tokenProvider.getAuthentication(token);
             SecurityContextHolder.getContext().setAuthentication(authentication);
         }
 

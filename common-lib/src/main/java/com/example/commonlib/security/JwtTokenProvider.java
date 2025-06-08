@@ -1,7 +1,6 @@
-package com.example.authservice.util;
+package com.example.commonlib.security;
 
-import com.example.authservice.config.JwtProperties;
-import com.example.authservice.dto.TokenInfo;
+import com.example.commonlib.config.JwtProperties;
 import io.jsonwebtoken.*;
 import io.jsonwebtoken.security.Keys;
 import lombok.extern.slf4j.Slf4j;
@@ -9,7 +8,6 @@ import org.springframework.security.authentication.UsernamePasswordAuthenticatio
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
-import org.springframework.stereotype.Component;
 
 import java.security.Key;
 import java.util.Arrays;
@@ -18,7 +16,6 @@ import java.util.Date;
 import java.util.stream.Collectors;
 
 @Slf4j
-@Component
 public class JwtTokenProvider {
 
     private final Key key;
@@ -35,7 +32,6 @@ public class JwtTokenProvider {
 
         return Jwts.builder()
                 .setSubject(authentication.getName())
-                .claim("userId", ((TokenInfo) authentication.getPrincipal()).getUserId())
                 .claim("roles", authentication.getAuthorities().stream()
                         .map(GrantedAuthority::getAuthority)
                         .collect(Collectors.toList()))
@@ -66,13 +62,7 @@ public class JwtTokenProvider {
                         .map(SimpleGrantedAuthority::new)
                         .collect(Collectors.toList());
 
-        TokenInfo principal = TokenInfo.builder()
-                .userId(claims.get("userId", Long.class))
-                .username(claims.getSubject())
-                .roles(claims.get("roles", String[].class))
-                .build();
-
-        return new UsernamePasswordAuthenticationToken(principal, token, authorities);
+        return new UsernamePasswordAuthenticationToken(claims.getSubject(), token, authorities);
     }
 
     public boolean validateToken(String token) {
