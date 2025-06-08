@@ -2,47 +2,220 @@
 
 주문과 결제를 처리하는 마이크로서비스 기반 시스템입니다.
 
-## 서비스 구성
+## 시스템 아키텍처
 
-### 1. Auth Service (8081)
-- 사용자 인증 및 인가
-- 회원 관리 (가입, 수정, 조회)
-- JWT 토큰 관리
-- 사용자 권한 관리
-- 프로필 관리
-- 엔드포인트: `/api/auth/**`, `/api/users/**`
+### 서비스 구성
+- **Gateway Service** (Port: 8000)
+  - API Gateway
+  - 라우팅 및 로드밸런싱
+  - Cross-Cutting Concerns 처리
 
-### 2. Order Service (8082)
-- 주문 생성 및 관리
-- 주문 상태 관리
-- 주문 이력 조회
-- 주문 이벤트 발행
-- 엔드포인트: `/api/orders/**`
+- **Auth Service** (Port: 8081)
+  - 사용자 인증/인가
+  - JWT 토큰 관리
+  - 사용자 계정 관리
 
-### 3. Payment Service (8083)
-- 결제 처리
-- 결제 상태 관리
-- 결제 이력 조회
-- 결제 이벤트 발행
-- 엔드포인트: `/api/payments/**`
+- **Order Service** (Port: 8082)
+  - 주문 생성 및 관리
+  - 주문 상태 추적
+  - 결제 요청 발행
 
-### 4. Gateway Service (8000)
-- API 라우팅
-- 로드 밸런싱
-- 서비스 디스커버리 연동
+- **Payment Service** (Port: 8083)
+  - 결제 처리
+  - 결제 상태 관리
+  - 결제 이력 관리
 
-### 5. Eureka Server (8761)
-- 서비스 디스커버리
-- 서비스 등록 및 관리
-- 상태 모니터링
+- **Service Discovery** (Eureka Server) (Port: 8761)
+  - 서비스 등록 및 발견
+  - 헬스 체크
 
-### 6. Common Library
-- 공통 DTO
-- 이벤트 메시지
-- 유틸리티 클래스
-- 공통 예외 처리
+## 기술 스택
 
-## 시스템 구성도
+### 공통
+- Java 11
+- Spring Boot 2.7.12
+- Spring Cloud
+- Gradle
+- MySQL 8.0
+- Kafka
+
+### 보안
+- Spring Security
+- JWT (JSON Web Token)
+- 중앙화된 보안 설정 (common-lib)
+
+## 주요 기능 및 구현
+
+### 1. 보안 자동 구성 (Security Auto Configuration)
+
+프로젝트는 `common-lib`을 통해 중앙화된 보안 설정을 제공합니다. 이는 Spring Boot의 Auto Configuration 메커니즘을 활용합니다.
+
+#### Auto Configuration 구조
+```
+common-lib/
+├── src/main/java/
+│   └── com/example/commonlib/
+│       ├── config/
+│       │   ├── SecurityAutoConfiguration.java
+│       │   └── JwtProperties.java
+│       └── security/
+│           ├── JwtAuthenticationFilter.java
+│           └── JwtTokenProvider.java
+└── src/main/resources/
+    └── META-INF/
+        └── spring.factories
+```
+
+#### spring.factories 설정
+```properties
+org.springframework.boot.autoconfigure.EnableAutoConfiguration=\
+com.example.commonlib.config.SecurityAutoConfiguration
+```
+
+#### 자동 구성되는 컴포넌트
+- `JwtTokenProvider`: JWT 토큰 생성 및 검증
+- `JwtAuthenticationFilter`: 요청의 JWT 토큰 처리
+- `SecurityFilterChain`: 보안 필터 체인 구성
+
+#### 사용 방법
+1. 의존성 추가:
+   ```gradle
+   implementation project(':common-lib')
+   ```
+
+2. JWT 설정 추가 (application.yml):
+   ```yaml
+   jwt:
+     secret: ${JWT_SECRET:your-secret-key}
+   ```
+
+3. 메인 클래스에 설정 활성화:
+   ```java
+   @EnableConfigurationProperties(JwtProperties.class)
+   ```
+
+### 2. 이벤트 기반 통신 (Kafka)
+
+서비스 간 비동기 통신을 위해 Kafka를 사용합니다.
+
+#### 토픽 구성
+- `order-created`: 주문 생성 이벤트
+- `payment-completed`: 결제 완료 이벤트
+- `payment-failed`: 결제 실패 이벤트
+
+#### 이벤트 포맷
+```json
+{
+  "eventId": "uuid",
+  "eventType": "ORDER_CREATED",
+  "timestamp": "2024-01-01T00:00:00Z",
+  "payload": {
+    // 이벤트별 페이로드
+  }
+}
+```
+
+### 3. 데이터베이스 구성
+
+각 서비스는 독립적인 데이터베이스를 사용합니다:
+
+- **Auth Service**: `auth_service`
+  - Users
+  - Roles
+  - Auth_tokens
+
+- **Order Service**: `orderdb`
+  - Orders
+  - Order_items
+  - Order_status_history
+
+- **Payment Service**: `paymentdb`
+  - Payments
+  - Payment_methods
+  - Payment_history
+
+### 4. API 문서화
+
+Swagger/OpenAPI를 통해 API 문서화가 제공됩니다:
+- Gateway: `http://localhost:8000/swagger-ui.html`
+- Auth: `http://localhost:8081/swagger-ui.html`
+- Order: `http://localhost:8082/swagger-ui.html`
+- Payment: `http://localhost:8083/swagger-ui.html`
+
+## 환경 변수
+
+| 변수명 | 설명 | 기본값 |
+|--------|------|--------|
+| `JWT_SECRET` | JWT 서명 키 | 미리 정의된 키 |
+| `MYSQL_HOST` | MySQL 호스트 | localhost |
+| `MYSQL_PORT` | MySQL 포트 | 3306 |
+| `KAFKA_BROKERS` | Kafka 브로커 목록 | localhost:9092 |
+
+## 빌드 및 실행
+
+1. 프로젝트 빌드:
+   ```bash
+   ./gradlew clean build
+   ```
+
+2. 서비스 실행 순서:
+   ```bash
+   # 1. Service Discovery (Eureka)
+   ./gradlew :eureka-server:bootRun
+
+   # 2. Auth Service
+   ./gradlew :auth-service:bootRun
+
+   # 3. Order Service
+   ./gradlew :order-service:bootRun
+
+   # 4. Payment Service
+   ./gradlew :payment-service:bootRun
+
+   # 5. Gateway Service
+   ./gradlew :gateway-service:bootRun
+   ```
+
+## 모니터링 및 관리
+
+### Actuator Endpoints
+각 서비스는 다음 Actuator 엔드포인트를 제공합니다:
+- `/actuator/health`: 서비스 헬스 체크
+- `/actuator/info`: 서비스 정보
+- `/actuator/metrics`: 메트릭 정보
+
+### 로깅
+- 로그 레벨은 application.yml에서 구성
+- 기본적으로 INFO 레벨 사용
+- 운영 환경에서는 ELK 스택 연동 권장
+
+## 확장 및 커스터마이징
+
+### 보안 설정 커스터마이징
+각 서비스에서 SecurityConfig를 구성하여 기본 설정을 오버라이드할 수 있습니다:
+
+```java
+@Configuration
+@EnableWebSecurity
+public class CustomSecurityConfig {
+    @Bean
+    public SecurityFilterChain filterChain(HttpSecurity http) {
+        // 커스텀 보안 설정
+    }
+}
+```
+
+### 이벤트 핸들러 추가
+새로운 이벤트 핸들러는 다음과 같이 구현:
+
+```java
+@KafkaListener(topics = "new-topic")
+public void handleNewEvent(EventMessage event) {
+    // 이벤트 처리 로직
+}
+```
+
+## 서비스 구성도
 ```mermaid
 graph TD
     Client[Client] --> Gateway[Gateway Service :8000]
@@ -67,17 +240,6 @@ graph TD
 | Payment Service | 8083 | /api/payments/** | 결제 처리 |
 | Kafka | 9092 | - | 메시지 브로커 |
 | Zookeeper | 2181 | - | Kafka 클러스터 관리 |
-
-## 기술 스택
-- Java 11
-- Spring Boot 2.7.x
-- Spring Cloud
-- Spring Security
-- Spring Data JPA
-- MySQL
-- Kafka
-- Docker
-- Gradle
 
 ## 시작하기
 
