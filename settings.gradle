@@ -1,0 +1,5 @@
+rootProject.name = 'order-payment-ms'
+include 'auth-service'
+include 'order-service'
+include 'payment-service'
+include 'common-lib' 
