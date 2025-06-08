@@ -11,6 +11,35 @@
 - **Order Service**: 효율적인 주문 처리
 - **Payment Service**: 안전한 결제 처리
 
+#### Gradle 멀티 프로젝트 설정
+```gradle
+// Root build.gradle
+buildscript {
+    ext {
+        springBootVersion = '2.7.12'
+        springCloudVersion = '2021.0.8'
+    }
+}
+
+plugins {
+    id 'org.springframework.boot' version "${springBootVersion}" apply false
+    id 'io.spring.dependency-management' version '1.0.15.RELEASE' apply false
+    id 'java'
+}
+
+subprojects {
+    apply plugin: 'java'
+    apply plugin: 'org.springframework.boot'
+    apply plugin: 'io.spring.dependency-management'
+
+    dependencies {
+        implementation 'org.springframework.boot:spring-boot-starter-web'
+        implementation 'org.springframework.cloud:spring-cloud-starter-netflix-eureka-client'
+        compileOnly 'org.projectlombok:lombok'
+    }
+}
+```
+
 ### 통신 패턴
 1. **동기 통신**
    - 서비스 간 직접 통신을 위한 REST API
@@ -29,6 +58,61 @@
 - 향상된 보안을 위한 리프레시 토큰 교체(RTR)
 - 안전한 토큰 저장 및 전송
 - 적절한 토큰 검증 및 오류 처리
+
+#### JWT 설정 예시
+```java
+// JwtProperties.java
+@Component
+@ConfigurationProperties(prefix = "jwt")
+@Getter @Setter
+public class JwtProperties {
+    private String secret;
+    private long accessTokenValidityInSeconds = 300; // 5 minutes
+    private long refreshTokenValidityInSeconds = 2592000; // 30 days
+}
+
+// SecurityConfig.java
+@Configuration
+@EnableWebSecurity
+@RequiredArgsConstructor
+public class SecurityConfig {
+    private final JwtTokenProvider tokenProvider;
+
+    @Bean
+    public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
+        http
+            .csrf().disable()
+            .sessionManagement().sessionCreationPolicy(SessionCreationPolicy.STATELESS)
+            .and()
+            .authorizeRequests()
+            .antMatchers("/api/auth/**").permitAll()
+            .anyRequest().authenticated()
+            .and()
+            .addFilterBefore(new JwtAuthenticationFilter(tokenProvider),
+                    UsernamePasswordAuthenticationFilter.class);
+        return http.build();
+    }
+}
+
+// JwtTokenProvider.java
+@Component
+public class JwtTokenProvider {
+    public String createAccessToken(Authentication authentication) {
+        long now = (new Date()).getTime();
+        Date validity = new Date(now + jwtProperties.getAccessTokenValidityInSeconds() * 1000);
+
+        return Jwts.builder()
+                .setSubject(authentication.getName())
+                .claim("userId", ((TokenInfo) authentication.getPrincipal()).getUserId())
+                .claim("roles", authentication.getAuthorities().stream()
+                        .map(GrantedAuthority::getAuthority)
+                        .collect(Collectors.toList()))
+                .signWith(key, SignatureAlgorithm.HS512)
+                .setExpiration(validity)
+                .compact();
+    }
+}
+```
 
 ### 권한 부여
 - 역할 기반 접근 제어(RBAC)
@@ -58,11 +142,130 @@
 - 데드 레터 큐
 - 이벤트 재시도 메커니즘
 
-### 이벤트 흐름
-1. 주문 생성 → 결제 처리
-2. 결제 상태 → 주문 업데이트
-3. 사용자 알림
-4. 감사 추적
+#### 이벤트 흐름 상세
+1. **주문 생성 → 결제 처리**
+   ```mermaid
+   sequenceDiagram
+       participant OS as Order Service
+       participant K as Kafka
+       participant PS as Payment Service
+       
+       OS->>OS: 주문 생성 (CREATED)
+       OS->>K: OrderCreatedEvent 발행
+       PS->>K: OrderCreatedEvent 구독
+       PS->>PS: 결제 처리
+       PS->>K: PaymentProcessedEvent 발행
+       OS->>K: PaymentProcessedEvent 구독
+       OS->>OS: 주문 상태 업데이트 (PAID/FAILED)
+   ```
+
+2. **이벤트 메시지 구조**
+   ```java
+   // OrderCreatedEvent.java
+   @Data
+   @AllArgsConstructor
+   public class OrderCreatedEvent {
+       private Long orderId;
+       private Long userId;
+       private BigDecimal totalAmount;  // 정확한 금액 계산을 위해 BigDecimal 사용
+   }
+
+   // PaymentProcessedEvent.java
+   @Data
+   @AllArgsConstructor
+   public class PaymentProcessedEvent {
+       private Long orderId;
+       private Long paymentId;
+       private BigDecimal amount;      // 정확한 금액 계산을 위해 BigDecimal 사용
+       private String status;          // SUCCESS, FAILED
+       private String failureReason;   // 실패 시 사유
+   }
+   ```
+
+3. **주문 상태 관리**
+   ```java
+   // OrderStatus.java
+   public enum OrderStatus {
+       CREATED,    // 주문이 처음 생성된 상태
+       PENDING,    // 결제 대기 상태
+       PAID,       // 결제 완료 상태
+       COMPLETED,  // 주문 처리 완료 상태
+       FAILED,     // 결제 실패 상태
+       CANCELLED   // 주문 취소 상태
+   }
+
+   // PaymentStatus.java
+   public enum PaymentStatus {
+       PENDING,    // 결제 대기 상태
+       SUCCESS,    // 결제 성공
+       FAILED      // 결제 실패
+   }
+   ```
+
+4. **이벤트 처리 구현**
+   ```java
+   // OrderProducer.java
+   @Component
+   @RequiredArgsConstructor
+   public class OrderProducer {
+       private final KafkaTemplate<String, OrderCreatedEvent> kafkaTemplate;
+       private static final String ORDER_CREATED_TOPIC = "order-created";
+
+       public void sendOrderCreatedEvent(Order order) {
+           OrderCreatedEvent event = new OrderCreatedEvent(
+               order.getId(),
+               order.getUserId(),
+               order.getTotalAmount()  // BigDecimal
+           );
+           kafkaTemplate.send(ORDER_CREATED_TOPIC, event);
+       }
+   }
+
+   // PaymentEventConsumer.java
+   @Component
+   @RequiredArgsConstructor
+   public class PaymentEventConsumer {
+       private final PaymentService paymentService;
+
+       @KafkaListener(topics = "payment-processed")
+       public void handlePaymentProcessedEvent(PaymentProcessedEvent event) {
+           if ("SUCCESS".equals(event.getStatus())) {
+               orderService.completeOrder(event.getOrderId(), event.getPaymentId());
+           } else {
+               orderService.failOrder(event.getOrderId(), event.getFailureReason());
+           }
+       }
+   }
+   ```
+
+5. **데이터 정확성 보장**
+   - 모든 금액 관련 필드에 BigDecimal 사용
+   ```java
+   public class Order {
+       private BigDecimal totalAmount;
+   }
+
+   public class OrderItem {
+       private BigDecimal price;
+       private BigDecimal subtotal;
+   }
+
+   public class Payment {
+       private BigDecimal amount;
+   }
+   ```
+
+6. **에러 처리 및 복구**
+   - 결제 실패 시 자동 실패 처리
+   - 상세한 실패 사유 기록
+   - 실패 이벤트를 통한 상태 동기화
+   - 트랜잭션 롤백 처리
+
+7. **모니터링 및 추적**
+   - 각 서비스의 이벤트 처리 로깅
+   - 결제 처리 상태 추적
+   - 실패한 트랜잭션 모니터링
+   - 성능 메트릭 수집
 
 ## 코드 품질
 
@@ -180,3 +383,56 @@
 - 포괄적인 모니터링 기능
 
 현재 구현은 견고하지만, 제안된 개선사항들은 시스템의 신뢰성, 보안성 및 성능을 더욱 향상시킬 것입니다. 
+
+## 서비스 아키텍처
+
+### 서비스 구성
+1. **Auth Service**
+   - 사용자 인증 및 인가
+   - 회원 관리 기능 통합
+   - JWT 기반 토큰 관리
+   - 사용자 프로필 관리
+   - 권한 기반 접근 제어
+
+2. **Order Service**
+   - 주문 생성 및 관리
+   - 주문 상태 관리
+   - Kafka 이벤트 발행
+   - 결제 결과 처리
+
+3. **Payment Service**
+   - 결제 처리
+   - 결제 상태 관리
+   - Kafka 이벤트 발행
+   - 결제 이력 관리
+
+4. **Common Library**
+   - 공통 DTO 클래스
+   - 이벤트 메시지 정의
+   - 공통 유틸리티
+   - 예외 처리 표준화
+
+### 인증 및 권한
+```mermaid
+sequenceDiagram
+    participant C as Client
+    participant G as Gateway
+    participant A as Auth Service
+    participant S as Other Services
+
+    C->>G: API 요청
+    G->>A: 토큰 검증
+    A->>A: 토큰 및 권한 확인
+    A->>G: 검증 결과
+    G->>S: 인증된 요청 전달
+```
+
+1. **토큰 기반 인증**
+   - JWT 사용
+   - Access Token / Refresh Token
+   - 토큰 만료 관리
+
+2. **권한 관리**
+   - Role 기반 접근 제어
+   - API 엔드포인트 보호
+   - 서비스 간 인증 

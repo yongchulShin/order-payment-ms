@@ -9,10 +9,10 @@ import com.example.orderservice.model.Order;
 import com.example.orderservice.model.OrderItem;
 import com.example.orderservice.model.OrderStatus;
 import com.example.orderservice.repository.OrderRepository;
+import com.example.orderservice.producer.OrderProducer;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.kafka.annotation.KafkaListener;
-import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -25,8 +25,7 @@ import java.util.stream.Collectors;
 public class OrderService {
 
     private final OrderRepository orderRepository;
-    private final KafkaTemplate<String, OrderCreatedEvent> kafkaTemplate;
-    private static final String ORDER_CREATED_TOPIC = "order-created";
+    private final OrderProducer orderProducer;
 
     @Transactional
     public OrderDto createOrder(CreateOrderRequest request) {
@@ -44,13 +43,8 @@ public class OrderService {
 
         order = orderRepository.save(order);
         
-        // Kafka로 이벤트 발행
-        OrderCreatedEvent event = new OrderCreatedEvent(
-            order.getId(),
-            order.getUserId(),
-            order.getTotalAmount()
-        );
-        kafkaTemplate.send(ORDER_CREATED_TOPIC, event);
+        // OrderProducer를 통해 이벤트 발행
+        orderProducer.sendOrderCreatedEvent(order);
         
         return mapToDto(order);
     }
@@ -65,12 +59,14 @@ public class OrderService {
                     .orElseThrow(() -> new IllegalArgumentException("Order not found: " + event.getOrderId()));
 
             // 결제 상태에 따라 주문 상태 업데이트
-            if ("COMPLETED".equals(event.getStatus())) {
-                order.updateStatus(OrderStatus.PAID);
+            if ("SUCCESS".equals(event.getStatus())) {
+                order.setStatus(OrderStatus.PAID);
+                order.setPaymentId(event.getPaymentId());
                 log.info("Order {} status updated to PAID", order.getId());
-            } else if ("FAILED".equals(event.getStatus())) {
-                order.updateStatus(OrderStatus.PAYMENT_FAILED);
-                log.info("Order {} status updated to PAYMENT_FAILED", order.getId());
+            } else {
+                order.setStatus(OrderStatus.FAILED);
+                order.setFailureReason(event.getFailureReason());
+                log.info("Order {} status updated to FAILED, reason: {}", order.getId(), event.getFailureReason());
             }
 
             orderRepository.save(order);
@@ -85,6 +81,28 @@ public class OrderService {
                 .orElseThrow(() -> new IllegalArgumentException("Order not found"));
 
         return mapToDto(order);
+    }
+
+    @Transactional
+    public void completeOrder(Long orderId, Long paymentId) {
+        Order order = orderRepository.findById(orderId)
+            .orElseThrow(() -> new RuntimeException("Order not found: " + orderId));
+            
+        order.setStatus(OrderStatus.COMPLETED);
+        order.setPaymentId(paymentId);
+        orderRepository.save(order);
+        log.info("Order completed: {}", orderId);
+    }
+
+    @Transactional
+    public void failOrder(Long orderId, String reason) {
+        Order order = orderRepository.findById(orderId)
+            .orElseThrow(() -> new RuntimeException("Order not found: " + orderId));
+            
+        order.setStatus(OrderStatus.FAILED);
+        order.setFailureReason(reason);
+        orderRepository.save(order);
+        log.info("Order failed: {}, reason: {}", orderId, reason);
     }
 
     private OrderDto mapToDto(Order order) {

@@ -35,7 +35,7 @@ public class PaymentService {
             CreatePaymentRequest request = CreatePaymentRequest.builder()
                     .orderId(event.getOrderId())
                     .userId(event.getUserId())
-                    .amount(new BigDecimal(event.getAmount()))
+                    .amount(event.getTotalAmount())
                     .paymentMethod("CREDIT_CARD") // 기본값
                     .build();
 
@@ -45,9 +45,9 @@ public class PaymentService {
             PaymentProcessedEvent processedEvent = new PaymentProcessedEvent(
                 payment.getOrderId(),
                 payment.getId(),
-                payment.getTransactionId(),
-                payment.getStatus().toString(),
-                payment.getAmount().doubleValue()
+                payment.getAmount(),
+                payment.getStatus().name(),
+                null
             );
             kafkaTemplate.send(PAYMENT_PROCESSED_TOPIC, processedEvent);
             
@@ -58,9 +58,9 @@ public class PaymentService {
             PaymentProcessedEvent failedEvent = new PaymentProcessedEvent(
                 event.getOrderId(),
                 null,
-                null,
-                PaymentStatus.FAILED.toString(),
-                event.getAmount()
+                event.getTotalAmount(),
+                "FAILED",
+                e.getMessage()
             );
             kafkaTemplate.send(PAYMENT_PROCESSED_TOPIC, failedEvent);
         }
@@ -91,5 +91,23 @@ public class PaymentService {
                 .createdAt(payment.getCreatedAt())
                 .updatedAt(payment.getUpdatedAt())
                 .build();
+    }
+
+    @Transactional
+    public Payment processPayment(Long orderId, BigDecimal amount) {
+        try {
+            // 실제 결제 처리 로직이 여기에 들어갈 것입니다.
+            // 예시를 위해 항상 성공하는 것으로 구현
+            Payment payment = Payment.builder()
+                    .orderId(orderId)
+                    .amount(amount)
+                    .status(PaymentStatus.SUCCESS)
+                    .build();
+
+            return paymentRepository.save(payment);
+        } catch (Exception e) {
+            log.error("Payment processing failed for order {}: {}", orderId, e.getMessage());
+            throw new RuntimeException("Payment processing failed", e);
+        }
     }
 } 

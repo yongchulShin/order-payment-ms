@@ -1,4 +1,4 @@
-package com.example.commonlib.event;
+package com.example.paymentservice.dto.event;
 
 import lombok.AllArgsConstructor;
 import lombok.Data;
@@ -13,6 +13,6 @@ public class PaymentProcessedEvent {
     private Long orderId;
     private Long paymentId;
     private BigDecimal amount;
-    private String status;  // SUCCESS, FAILED
+    private String status; // SUCCESS, FAILED
     private String failureReason;
 } 

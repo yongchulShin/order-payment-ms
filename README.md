@@ -2,16 +2,51 @@
 
 사용자 인증 및 권한 부여가 포함된 견고한 마이크로서비스 기반 주문-결제 시스템입니다.
 
-## 시스템 구조
+## 서비스 구조
 
-시스템은 다음과 같은 마이크로서비스로 구성되어 있습니다:
+### 1. Auth Service
+- 사용자 인증 및 인가
+- 회원 관리 (가입, 수정, 조회)
+- JWT 토큰 관리
+- 사용자 권한 관리
+- 프로필 관리
 
-- **Eureka Server**: 서비스 디스커버리 및 등록
-- **API Gateway**: 모든 클라이언트 요청에 대한 단일 진입점
-- **Auth Service**: 사용자 인증 및 권한 부여 처리
-- **User Service**: 사용자 프로필 및 정보 관리
-- **Order Service**: 주문 생성 및 관리
-- **Payment Service**: 결제 처리 및 결제 내역 관리
+### 2. Order Service
+- 주문 생성 및 관리
+- 주문 상태 관리
+- 주문 이력 조회
+- 주문 이벤트 발행
+
+### 3. Payment Service
+- 결제 처리
+- 결제 상태 관리
+- 결제 이력 조회
+- 결제 이벤트 발행
+
+### 4. Common Library
+- 공통 DTO
+- 이벤트 메시지
+- 유틸리티 클래스
+- 공통 예외 처리
+
+## 서비스 간 통신
+```mermaid
+graph TD
+    Client[Client] --> Gateway[API Gateway]
+    Gateway --> Auth[Auth Service]
+    Gateway --> Order[Order Service]
+    Gateway --> Payment[Payment Service]
+    Order --> Kafka[Kafka Event Bus]
+    Payment --> Kafka
+    Order --> Auth
+    Payment --> Auth
+```
+
+### 인증 흐름
+1. 클라이언트가 Auth Service를 통해 로그인
+2. JWT 토큰 발급
+3. 토큰을 사용하여 다른 서비스 접근
+4. Auth Service에서 사용자 정보 및 권한 검증
 
 ## 기술 스택
 
@@ -50,6 +85,50 @@
 - 비동기 처리
 - 중요 작업에 대한 이벤트 소싱
 
+#### 이벤트 흐름
+주문-결제 프로세스는 다음과 같은 이벤트 흐름을 따릅니다:
+
+```mermaid
+sequenceDiagram
+    participant OS as Order Service
+    participant K as Kafka
+    participant PS as Payment Service
+    
+    OS->>OS: 주문 생성 (CREATED)
+    OS->>K: OrderCreatedEvent 발행
+    PS->>K: OrderCreatedEvent 구독
+    PS->>PS: 결제 처리
+    PS->>K: PaymentProcessedEvent 발행
+    OS->>K: PaymentProcessedEvent 구독
+    OS->>OS: 주문 상태 업데이트 (PAID/FAILED)
+```
+
+1. **주문 생성 이벤트**
+   - Order Service에서 주문 생성 시 `order-created` 토픽으로 이벤트 발행
+   - 이벤트 데이터: 주문ID, 사용자ID, 총액(BigDecimal)
+
+2. **결제 처리 이벤트**
+   - Payment Service에서 결제 처리 후 `payment-processed` 토픽으로 이벤트 발행
+   - 이벤트 데이터: 주문ID, 결제ID, 금액(BigDecimal), 상태(SUCCESS/FAILED), 실패 사유
+
+3. **주문 상태 흐름**
+   - CREATED: 주문 생성 시
+   - PENDING: 결제 대기 상태
+   - PAID: 결제 완료 상태
+   - COMPLETED: 주문 처리 완료 상태
+   - FAILED: 결제 실패 상태
+   - CANCELLED: 주문 취소 상태
+
+4. **에러 처리**
+   - 결제 실패 시 자동 실패 처리
+   - 상세 실패 사유 기록
+   - 실패 이벤트를 통한 상태 동기화
+
+5. **데이터 정확성**
+   - 모든 금액은 BigDecimal 사용
+   - 주문 금액, 결제 금액, 상품 가격 등 정확한 계산 보장
+   - 반올림 오류 방지
+
 ## 시작하기
 
 ### 사전 요구사항
@@ -62,7 +141,7 @@
 
 1. 저장소 클론:
 ```bash
-git clone https://github.com/yourusername/order-payment-ms.git
+git clone https://github.com/yongchulShin/order-payment-ms.git
 cd order-payment-ms
 ```
 
@@ -146,3 +225,15 @@ docker-compose up -d
 ## 라이선스
 
 이 프로젝트는 MIT 라이선스를 따릅니다 - 자세한 내용은 LICENSE 파일을 참조하세요.
+
+## 서비스 포트 구성
+
+| 서비스 | 포트 | 설명 |
+|--------|------|------|
+| Gateway Service | 8000 | API Gateway |
+| Eureka Server | 8761 | 서비스 디스커버리 |
+| Auth Service | 8081 | 인증 및 사용자 관리 |
+| Order Service | 8082 | 주문 관리 |
+| Payment Service | 8083 | 결제 처리 |
+| Kafka | 9092 | 메시지 브로커 |
+| Zookeeper | 2181 | Kafka 클러스터 관리 |

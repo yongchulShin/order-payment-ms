@@ -1,19 +1,19 @@
 package com.example.orderservice.model;
 
-import lombok.Getter;
-import lombok.Setter;
-import lombok.NoArgsConstructor;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
+import lombok.Data;
+import lombok.NoArgsConstructor;
 
 import javax.persistence.*;
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 
+@Data
 @Entity
 @Table(name = "orders")
-@Getter @Setter
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
@@ -33,7 +33,7 @@ public class Order {
     private OrderStatus status;
 
     @Column(nullable = false)
-    private Double totalAmount;
+    private BigDecimal totalAmount;
 
     @Column(length = 255)
     private String shippingAddress;
@@ -48,10 +48,19 @@ public class Order {
     @Column(name = "updated_at")
     private LocalDateTime updatedAt;
 
+    @Column(name = "payment_id")
+    private Long paymentId;
+
+    @Column(name = "failure_reason", length = 255)
+    private String failureReason;
+
     @PrePersist
     protected void onCreate() {
         createdAt = LocalDateTime.now();
         updatedAt = LocalDateTime.now();
+        if (status == null) {
+            status = OrderStatus.PENDING;
+        }
     }
 
     @PreUpdate
