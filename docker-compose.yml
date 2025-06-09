@@ -116,7 +116,7 @@ services:
 
 networks:
   microservices-network:
-    driver: bridge
+    driver: bridge 
 
 volumes:
   mysql_data: 

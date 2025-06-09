@@ -1,7 +1,6 @@
 package com.example.orderservice.service;
 
 import com.example.commonlib.event.OrderCreatedEvent;
-import com.example.commonlib.event.PaymentProcessedEvent;
 import com.example.orderservice.dto.CreateOrderRequest;
 import com.example.orderservice.dto.OrderDto;
 import com.example.orderservice.dto.OrderItemDto;
@@ -9,13 +8,18 @@ import com.example.orderservice.model.Order;
 import com.example.orderservice.model.OrderItem;
 import com.example.orderservice.model.OrderStatus;
 import com.example.orderservice.repository.OrderRepository;
-import com.example.orderservice.producer.OrderProducer;
+import com.example.orderservice.kafka.producer.OrderProducer;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.kafka.annotation.KafkaListener;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
+import java.util.List;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
@@ -23,15 +27,30 @@ import java.util.stream.Collectors;
 @Service
 @RequiredArgsConstructor
 public class OrderService {
-
     private final OrderRepository orderRepository;
     private final OrderProducer orderProducer;
 
+    private Long getCurrentUserId() {
+        Jwt jwt = (Jwt) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
+        return Long.parseLong(jwt.getSubject());
+    }
+
     @Transactional
     public OrderDto createOrder(CreateOrderRequest request) {
+        // Get current user ID from security context
+        Long userId = getCurrentUserId();
+        log.debug("Creating order for user ID: {}", userId);
+
+        // Calculate total amount from items
+        BigDecimal totalAmount = request.getItems().stream()
+                .map(item -> BigDecimal.valueOf(item.getQuantity()))
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+
         Order order = Order.builder()
                 .orderNumber(UUID.randomUUID().toString())
-                .status(OrderStatus.CREATED)
+                .userId(userId)
+                .status(OrderStatus.PENDING)
+                .totalAmount(totalAmount)
                 .shippingAddress(request.getShippingAddress())
                 .orderItems(request.getItems().stream()
                         .map(item -> OrderItem.builder()
@@ -42,83 +61,86 @@ public class OrderService {
                 .build();
 
         order = orderRepository.save(order);
-        
-        // OrderProducer를 통해 이벤트 발행
-        orderProducer.sendOrderCreatedEvent(order);
-        
-        return mapToDto(order);
-    }
+        log.info("Order created with ID: {} for user ID: {}", order.getId(), userId);
 
-    @KafkaListener(topics = "payment-processed", groupId = "order-service")
-    @Transactional
-    public void handlePaymentProcessed(PaymentProcessedEvent event) {
-        log.info("Received PaymentProcessedEvent: {}", event);
-        
-        try {
-            Order order = orderRepository.findById(event.getOrderId())
-                    .orElseThrow(() -> new IllegalArgumentException("Order not found: " + event.getOrderId()));
+        // Create and send OrderCreatedEvent
+        OrderCreatedEvent event = new OrderCreatedEvent(
+                order.getId(),
+                order.getUserId(),
+                order.getTotalAmount()
+        );
+        orderProducer.sendOrderCreatedEvent(event);
 
-            // 결제 상태에 따라 주문 상태 업데이트
-            if ("SUCCESS".equals(event.getStatus())) {
-                order.setStatus(OrderStatus.PAID);
-                order.setPaymentId(event.getPaymentId());
-                log.info("Order {} status updated to PAID", order.getId());
-            } else {
-                order.setStatus(OrderStatus.FAILED);
-                order.setFailureReason(event.getFailureReason());
-                log.info("Order {} status updated to FAILED, reason: {}", order.getId(), event.getFailureReason());
-            }
-
-            orderRepository.save(order);
-        } catch (Exception e) {
-            log.error("Failed to process payment event for order: {}", event.getOrderId(), e);
-        }
+        return convertToDto(order);
     }
 
     @Transactional(readOnly = true)
     public OrderDto getOrder(String orderId) {
         Order order = orderRepository.findById(Long.parseLong(orderId))
-                .orElseThrow(() -> new IllegalArgumentException("Order not found"));
+                .orElseThrow(() -> new RuntimeException("Order not found: " + orderId));
+        
+        // Check if the current user has access to this order
+        Long currentUserId = getCurrentUserId();
+        if (!order.getUserId().equals(currentUserId)) {
+            throw new RuntimeException("Access denied to order: " + orderId);
+        }
+        
+        return convertToDto(order);
+    }
 
-        return mapToDto(order);
+    @Transactional(readOnly = true)
+    public Page<OrderDto> getCurrentUserOrders(Pageable pageable) {
+        Long userId = getCurrentUserId();
+        return orderRepository.findByUserIdOrderByCreatedAtDesc(userId, pageable)
+                .map(this::convertToDto);
+    }
+
+    @Transactional(readOnly = true)
+    public Page<OrderDto> getCurrentUserOrdersByStatus(OrderStatus status, Pageable pageable) {
+        Long userId = getCurrentUserId();
+        return orderRepository.findByUserIdAndStatusOrderByCreatedAtDesc(userId, status, pageable)
+                .map(this::convertToDto);
     }
 
     @Transactional
     public void completeOrder(Long orderId, Long paymentId) {
         Order order = orderRepository.findById(orderId)
-            .orElseThrow(() -> new RuntimeException("Order not found: " + orderId));
-            
+                .orElseThrow(() -> new RuntimeException("Order not found: " + orderId));
+        
         order.setStatus(OrderStatus.COMPLETED);
         order.setPaymentId(paymentId);
         orderRepository.save(order);
-        log.info("Order completed: {}", orderId);
+        log.info("Order completed - orderId: {}, paymentId: {}", orderId, paymentId);
     }
 
     @Transactional
     public void failOrder(Long orderId, String reason) {
         Order order = orderRepository.findById(orderId)
-            .orElseThrow(() -> new RuntimeException("Order not found: " + orderId));
-            
+                .orElseThrow(() -> new RuntimeException("Order not found: " + orderId));
+        
         order.setStatus(OrderStatus.FAILED);
         order.setFailureReason(reason);
         orderRepository.save(order);
-        log.info("Order failed: {}, reason: {}", orderId, reason);
+        log.info("Order failed - orderId: {}, reason: {}", orderId, reason);
     }
 
-    private OrderDto mapToDto(Order order) {
+    private OrderDto convertToDto(Order order) {
+        List<OrderItemDto> itemDtos = order.getOrderItems().stream()
+                .map(item -> OrderItemDto.builder()
+                        .id(item.getId())
+                        .productId(item.getProductId())
+                        .quantity(item.getQuantity())
+                        .build())
+                .collect(Collectors.toList());
+
         return OrderDto.builder()
                 .id(order.getId())
                 .orderNumber(order.getOrderNumber())
-                .status(order.getStatus())
+                .userId(order.getUserId())
                 .totalAmount(order.getTotalAmount())
+                .status(order.getStatus())
                 .shippingAddress(order.getShippingAddress())
-                .orderItems(order.getOrderItems().stream()
-                        .map(item -> OrderItemDto.builder()
-                                .id(item.getId())
-                                .productId(item.getProductId())
-                                .quantity(item.getQuantity())
-                                .build())
-                        .collect(Collectors.toList()))
+                .orderItems(itemDtos)
                 .createdAt(order.getCreatedAt())
                 .updatedAt(order.getUpdatedAt())
                 .build();
