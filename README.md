@@ -14,6 +14,11 @@
   - 서비스 등록 및 발견
   - 헬스 체크
 
+- **Auth Service** (Port: 8081)
+  - 사용자 인증 및 인가
+  - JWT 토큰 관리
+  - 사용자 관리
+
 - **Order Service** (Port: 8082)
   - 주문 생성 및 관리
   - 주문 상태 추적
@@ -35,7 +40,8 @@
 
 ### 보안
 - Spring Security
-- Basic Authentication
+- JWT 기반 인증
+- Role 기반 권한 관리
 
 ## 주요 기능 및 구현
 
@@ -67,6 +73,12 @@
 
 각 서비스는 독립적인 데이터베이스를 사용합니다:
 
+- **Auth Service**: `auth_db`
+  - Users
+  - Roles
+  - User_roles
+  - Auth_tokens
+
 - **Order Service**: `orderdb`
   - Orders
   - Order_items
@@ -81,6 +93,7 @@
 
 Swagger/OpenAPI를 통해 API 문서화가 제공됩니다:
 - Gateway: `http://localhost:8000/swagger-ui.html`
+- Auth: `http://localhost:8081/swagger-ui.html`
 - Order: `http://localhost:8082/swagger-ui.html`
 - Payment: `http://localhost:8083/swagger-ui.html`
 
@@ -104,13 +117,16 @@ Swagger/OpenAPI를 통해 API 문서화가 제공됩니다:
    # 1. Service Discovery (Eureka)
    ./gradlew :eureka-server:bootRun
 
-   # 2. Order Service
+   # 2. Auth Service
+   ./gradlew :auth-service:bootRun
+
+   # 3. Order Service
    ./gradlew :order-service:bootRun
 
-   # 3. Payment Service
+   # 4. Payment Service
    ./gradlew :payment-service:bootRun
 
-   # 4. Gateway Service
+   # 5. Gateway Service
    ./gradlew :gateway-service:bootRun
    ```
 
@@ -131,6 +147,7 @@ Swagger/OpenAPI를 통해 API 문서화가 제공됩니다:
 ```mermaid
 graph TD
     Client[Client] --> Gateway[Gateway Service :8000]
+    Gateway --> Auth[Auth Service :8081]
     Gateway --> Order[Order Service :8082]
     Gateway --> Payment[Payment Service :8083]
     Order --> Kafka[Kafka :9092]
@@ -144,6 +161,7 @@ graph TD
 |--------|------|------------|------|
 | Gateway Service | 8000 | / | API Gateway |
 | Eureka Server | 8761 | /eureka | 서비스 디스커버리 |
+| Auth Service | 8081 | /api/auth/**, /api/users/** | 인증 및 사용자 관리 |
 | Order Service | 8082 | /api/orders/** | 주문 관리 |
 | Payment Service | 8083 | /api/payments/** | 결제 처리 |
 | Kafka | 9092 | - | 메시지 브로커 |
@@ -162,5 +180,21 @@ cd order-payment-ms
 docker-compose up -d
 ```
 
-3. 각 서비스 실행 (위의 '빌드 및 실행' 섹션 참조)
+3. 각 서비스 실행:
+```bash
+# 1. Service Discovery (Eureka)
+./gradlew :eureka-server:bootRun
+
+# 2. Auth Service
+./gradlew :auth-service:bootRun
+
+# 3. Order Service
+./gradlew :order-service:bootRun
+
+# 4. Payment Service
+./gradlew :payment-service:bootRun
+
+# 5. Gateway Service
+./gradlew :gateway-service:bootRun
+```
 
