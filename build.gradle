@@ -48,7 +48,11 @@ subprojects {
     dependencies {
         // Common dependencies for all services
         implementation 'org.springframework.boot:spring-boot-starter-web'
+        implementation 'org.springframework.boot:spring-boot-starter-actuator'
         implementation 'org.springframework.cloud:spring-cloud-starter-netflix-eureka-client'
+        implementation 'org.springdoc:springdoc-openapi-ui:1.7.0'
+        implementation 'org.springdoc:springdoc-openapi-webmvc-core:1.7.0'
+        implementation project(':common-lib')
         compileOnly 'org.projectlombok:lombok'
         annotationProcessor 'org.projectlombok:lombok'
         testImplementation 'org.springframework.boot:spring-boot-starter-test'
