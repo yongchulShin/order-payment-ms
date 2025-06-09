@@ -73,7 +73,7 @@
 
 각 서비스는 독립적인 데이터베이스를 사용합니다:
 
-- **Auth Service**: `auth_db`
+- **Auth Service**: `authdb`
   - Users
   - Roles
   - User_roles
