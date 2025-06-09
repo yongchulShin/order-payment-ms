@@ -8,8 +8,10 @@
           <entry name="$USER_HOME$/.gradle/caches/modules-2/files-2.1/org.projectlombok/lombok/1.18.26/8f8cf0372abf564913e9796623aac4c8ea44025a/lombok-1.18.26.jar" />
         </processorPath>
         <module name="order-payment-ms.common-lib.main" />
+        <module name="order-payment-ms.eureka-server.main" />
         <module name="order-payment-ms.order-service.main" />
         <module name="order-payment-ms.payment-service.main" />
+        <module name="order-payment-ms.gateway-service.main" />
         <module name="order-payment-ms.auth-service.main" />
       </profile>
     </annotationProcessing>

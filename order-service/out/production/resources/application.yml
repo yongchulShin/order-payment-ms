@@ -1,5 +1,5 @@
 server:
-  port: 8081
+  port: 8082
 
 spring:
   application:
@@ -32,6 +32,13 @@ spring:
       value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
       properties:
         spring.json.trusted.packages: "*"
+    listener:
+      missing-topics-fatal: false
+    admin:
+      auto-create: true
+
+jwt:
+  secret: ${JWT_SECRET:c2VjcmV0LWtleS1mb3ItbWljcm9zZXJ2aWNlcy1wcm9qZWN0LWp3dC10b2tlbi1nZW5lcmF0aW9uLWFuZC12YWxpZGF0aW9u}
 
 eureka:
   client:
@@ -40,4 +47,16 @@ eureka:
     service-url:
       defaultZone: http://localhost:8761/eureka/
   instance:
-    instance-id: ${spring.application.name}:${spring.application.instance_id:${random.value}} 
+    instance-id: ${spring.application.name}:${spring.application.instance_id:${random.value}}
+
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html
+    defaultModelsExpandDepth: -1
+    doc-expansion: none
+  api-docs:
+    path: /v3/api-docs
+  default-consumes-media-type: application/json
+  default-produces-media-type: application/json
+  paths-to-match:
+    - /api/** 

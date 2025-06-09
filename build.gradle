@@ -1,7 +1,10 @@
 buildscript {
     ext {
         springBootVersion = '2.7.12'
-        springCloudVersion = '2021.0.8'
+        springCloudVersion = '2021.0.7'
+    }
+    repositories {
+        mavenCentral()
     }
 }
 
@@ -15,6 +18,10 @@ allprojects {
     group = 'com.example'
     version = '0.0.1-SNAPSHOT'
     sourceCompatibility = '11'
+
+    repositories {
+        mavenCentral()
+    }
 }
 
 subprojects {
@@ -35,8 +42,8 @@ subprojects {
         }
     }
 
-    repositories {
-        mavenCentral()
+    ext {
+        set('springCloudVersion', "2021.0.7")
     }
 
     dependencyManagement {
@@ -46,13 +53,19 @@ subprojects {
     }
 
     dependencies {
-        // Common dependencies for all services
-        implementation 'org.springframework.boot:spring-boot-starter-web'
-        implementation 'org.springframework.boot:spring-boot-starter-actuator'
-        implementation 'org.springframework.cloud:spring-cloud-starter-netflix-eureka-client'
-        implementation 'org.springdoc:springdoc-openapi-ui:1.7.0'
-        implementation 'org.springdoc:springdoc-openapi-webmvc-core:1.7.0'
-        implementation project(':common-lib')
+        if (project.name != 'eureka-server' && project.name != 'common-lib' && project.name != 'gateway-service') {
+            implementation project(':common-lib')
+        }
+        
+        // Common dependencies for all services except gateway-service
+        if (project.name != 'gateway-service') {
+            implementation 'org.springframework.boot:spring-boot-starter-web'
+            implementation 'org.springframework.boot:spring-boot-starter-actuator'
+            implementation 'org.springframework.cloud:spring-cloud-starter-netflix-eureka-client'
+            implementation 'org.springdoc:springdoc-openapi-ui:1.7.0'
+            implementation 'org.springdoc:springdoc-openapi-webmvc-core:1.7.0'
+        }
+        
         compileOnly 'org.projectlombok:lombok'
         annotationProcessor 'org.projectlombok:lombok'
         testImplementation 'org.springframework.boot:spring-boot-starter-test'
